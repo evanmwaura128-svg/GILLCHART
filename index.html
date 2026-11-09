@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10110f">
+  <title>Gill Chart</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="Gill Chart home">
+        <span class="brand-mark" aria-hidden="true">G</span>
+        <span>Gill <span class="brand-light">Chart</span></span>
+      </a>
+      <div class="topbar-meta">
+        <span class="status-indicator" aria-hidden="true"></span>
+        <span>LOCAL WORKSPACE</span>
+      </div>
+    </header>
+
+    <main class="dashboard">
+      <section class="chart-column" aria-labelledby="workspace-title">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">CHART WORKSPACE</p>
+            <h1 id="workspace-title">Market view</h1>
+          </div>
+          <button class="clear-button" id="clear-button" type="button" disabled>
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M8 5V3.5h4V5m2 0-.7 11H6.7L6 5m2.5 3v5m3-5v5"/></svg>
+            <span>Clear / Upload New Chart</span>
+          </button>
+        </div>
+
+        <div class="chart-frame" id="chart-frame">
+          <div class="chart-toolbar">
+            <div class="chart-label">
+              <span class="chart-dot" aria-hidden="true"></span>
+              <span id="chart-filename">NO CHART LOADED</span>
+            </div>
+            <span class="image-dimensions" id="image-dimensions">-- × -- PX</span>
+          </div>
+
+          <div class="chart-stage" id="chart-stage">
+            <div class="upload-prompt" id="upload-prompt" role="button" tabindex="0" aria-label="Choose a chart image">
+              <div class="upload-icon" aria-hidden="true">
+                <svg viewBox="0 0 32 32"><path d="M16 21V6m0 0-6 6m6-6 6 6M6 20v6h20v-6"/></svg>
+              </div>
+              <h2>Bring your chart into focus</h2>
+              <p>Drop a screenshot here, or <span class="inline-upload">browse files</span></p>
+              <span class="file-types">PNG · JPG · WEBP</span>
+            </div>
+            <canvas id="chart-canvas" aria-label="Uploaded chart screenshot" hidden></canvas>
+            <div class="drop-overlay" id="drop-overlay" aria-hidden="true">
+              <span>Release to load chart</span>
+            </div>
+            <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" hidden>
+          </div>
+          <div class="chart-footer">
+            <span>IMAGE VIEW</span>
+            <span id="pixel-note">Original image pixels preserved</span>
+          </div>
+        </div>
+      </section>
+
+      <aside class="signal-panel" aria-labelledby="signal-title">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">TRADE PLAN</p>
+            <h2 id="signal-title">Signal &amp; Setup</h2>
+          </div>
+          <span class="panel-index">01</span>
+        </div>
+
+        <div class="decision-box">
+          <div class="field-heading">
+            <span>Decision</span>
+            <span class="field-dash" aria-hidden="true"></span>
+          </div>
+          <p class="decision-result" id="decision-result">WAITING FOR BREAKOUT</p>
+          <div class="decision-options" aria-label="Decision placeholder">
+            <div class="decision-option buy" id="decision-buy" aria-pressed="false"><span class="decision-indicator"></span>BUY NOW</div>
+            <div class="decision-option sell" id="decision-sell" aria-pressed="false"><span class="decision-indicator"></span>SELL NOW</div>
+            <div class="decision-option wait is-active" id="decision-wait" aria-pressed="true"><span class="decision-indicator"></span>WAIT</div>
+          </div>
+        </div>
+
+        <div class="levels-list">
+          <div class="level-row">
+            <div class="level-name"><span class="level-marker entry-marker"></span><span>Entry</span></div>
+            <span class="level-value" id="entry-value">—</span>
+          </div>
+          <div class="level-row">
+            <div class="level-name"><span class="level-marker tp-marker"></span><span>Take Profit <span class="level-abbr">(TP)</span></span></div>
+            <span class="level-value" id="tp-value">—</span>
+          </div>
+          <div class="level-row">
+            <div class="level-name"><span class="level-marker sl-marker"></span><span>Stop Loss <span class="level-abbr">(SL)</span></span></div>
+            <span class="level-value" id="sl-value">—</span>
+          </div>
+        </div>
+
+        <div class="panel-note">
+          <span class="note-mark" aria-hidden="true">i</span>
+          <p>Signal and price levels will appear here when your rules are connected.</p>
+        </div>
+        <div class="panel-bottom"><span>SETUP STATUS</span><span class="waiting-status" id="setup-status">AWAITING BREAKOUT</span></div>
+      </aside>
+    </main>
+
+    <footer class="app-footer">
+      <span>GILL CHART <span class="footer-separator">/</span> IMAGE WORKSPACE</span>
+      <span>PRIVATE BY DESIGN <span class="footer-dot" aria-hidden="true"></span></span>
+    </footer>
+  </div>
+</body>
+</html>
