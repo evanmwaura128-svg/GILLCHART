@@ -560,16 +560,26 @@ export function evaluateTradeSignal(candles, highSwings, lowSwings, canvas, time
     return finalize();
 }
 
-export function renderDashboardSignals(decision, entry, tp, sl, canvas, ctx, livePrice = null) {
-    updateSidebar(decision, entry, tp, sl, livePrice);
+export function renderDashboardSignals(
+    decision,
+    entryTarget,
+    takeProfitTarget,
+    stopLossTarget,
+    canvas,
+    ctx,
+    livePrice = null
+) {
+    updateSidebar(decision, entryTarget, takeProfitTarget, stopLossTarget, livePrice);
     if (!canvas || !ctx) return;
 
     try {
         const bands = [
-            { price: entry, color: '#00a2ff' },
-            { price: tp, color: '#2ecc71' },
-            { price: sl, color: '#e74c3c' }
+            { price: entryTarget, color: '#00a2ff' },
+            { price: takeProfitTarget, color: '#2ecc71' },
+            { price: stopLossTarget, color: '#e74c3c' }
         ];
+        const startX = Math.floor(canvas.width * 0.04);
+        const endX = Math.floor(canvas.width * 0.85);
         ctx.save();
         try {
             ctx.setLineDash([5, 5]);
@@ -582,8 +592,8 @@ export function renderDashboardSignals(decision, entry, tp, sl, canvas, ctx, liv
 
                 ctx.beginPath();
                 ctx.strokeStyle = band.color;
-                ctx.moveTo(0, y);
-                ctx.lineTo(canvas.width, y);
+                ctx.moveTo(startX, y);
+                ctx.lineTo(endX, y);
                 ctx.stroke();
 
                 const priceText = formatPrice(band.price);
