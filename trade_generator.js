@@ -48,17 +48,8 @@ function updateSidebar(decision, entry, tp, sl, livePrice) {
         if (sellRadio) sellRadio.checked = false;
         if (waitRadio) waitRadio.checked = false;
 
-        let activeId = 'decision-wait';
-        const decisionText = typeof decision === 'string' ? decision : '';
-        if (decisionText.includes('BUY NOW')) {
-            activeId = 'decision-buy';
-            if (buyRadio) buyRadio.checked = true;
-        } else if (decisionText.includes('SELL NOW')) {
-            activeId = 'decision-sell';
-            if (sellRadio) sellRadio.checked = true;
-        } else if (waitRadio) {
-            waitRadio.checked = true;
-        }
+        const activeId = 'decision-wait';
+        if (waitRadio) waitRadio.checked = true;
 
         const optionIds = ['decision-buy', 'decision-sell', 'decision-wait'];
         for (let index = 0; index < optionIds.length; index++) {
@@ -219,8 +210,7 @@ export function evaluateTradeSignal(
     highSwings,
     lowSwings,
     canvas,
-    timeframe = '',
-    priceAxisScale = canvas?.priceAxisScale
+    timeframe = ''
 ) {
     let dailyTrendBias = 'BULLISH';
     let proximityContext = null;
@@ -298,7 +288,7 @@ export function evaluateTradeSignal(
         const liveClose = Number.isFinite(liveCandle.closePrice)
             ? liveCandle.closePrice
             : Number.isFinite(liveCandle.highY)
-                ? convertYToPrice(canvas, liveCandle.highY, priceAxisScale)
+                ? convertYToPrice(canvas, liveCandle.highY)
                 : NaN;
         livePrice = liveClose;
         const PROXIMITY_ZONE = 3.00;
@@ -311,12 +301,12 @@ export function evaluateTradeSignal(
         const peakPrice = Number.isFinite(peakGoldPrice)
             ? peakGoldPrice
             : Number.isFinite(latestPeak.highY)
-                ? convertYToPrice(canvas, latestPeak.highY, priceAxisScale)
+                ? convertYToPrice(canvas, latestPeak.highY)
                 : NaN;
         const valleyPrice = Number.isFinite(valleyGoldPrice)
             ? valleyGoldPrice
             : Number.isFinite(latestValley.lowY)
-                ? convertYToPrice(canvas, latestValley.lowY, priceAxisScale)
+                ? convertYToPrice(canvas, latestValley.lowY)
                 : NaN;
         const rangeHeight = parseFloat(peakPrice) - parseFloat(valleyPrice);
         if (!Number.isFinite(livePrice) || !Number.isFinite(peakPrice)
@@ -388,12 +378,12 @@ export function evaluateTradeSignal(
             decision = refillConfirmed ? 'FVG: REFILL CONFIRMED - READY' : 'FVG: WAIT FOR REFILL';
             const fvgStopBuffer = Math.min(riskBufferGap, Math.max(1, rangeHeight * 0.1));
 
-            entryTarget = convertYToPrice(canvas, activeFvg.entryY, priceAxisScale);
-            const wickPrice = convertYToPrice(canvas, activeFvg.stopWickY, priceAxisScale);
+            entryTarget = convertYToPrice(canvas, activeFvg.entryY);
+            const wickPrice = convertYToPrice(canvas, activeFvg.stopWickY);
             if (activeFvg.direction === 'bullish') {
                 stopLossTarget = Math.min(wickPrice, activeFvg.gapLowerPrice) - fvgStopBuffer;
                 const ceilingPrice = Number.isFinite(latestPeak.highY)
-                    ? convertYToPrice(canvas, latestPeak.highY, priceAxisScale)
+                    ? convertYToPrice(canvas, latestPeak.highY)
                     : peakPrice;
                 takeProfitTarget = ceilingPrice > entryTarget
                     ? ceilingPrice
@@ -401,7 +391,7 @@ export function evaluateTradeSignal(
             } else {
                 stopLossTarget = Math.max(wickPrice, activeFvg.gapUpperPrice) + fvgStopBuffer;
                 const floorPrice = Number.isFinite(latestValley.lowY)
-                    ? convertYToPrice(canvas, latestValley.lowY, priceAxisScale)
+                    ? convertYToPrice(canvas, latestValley.lowY)
                     : valleyPrice;
                 takeProfitTarget = floorPrice < entryTarget
                     ? floorPrice
@@ -600,8 +590,7 @@ export function renderDashboardSignals(
     stopLossTarget,
     canvas,
     ctx,
-    livePrice = null,
-    priceAxisScale = canvas?.priceAxisScale
+    livePrice = null
 ) {
     updateSidebar(decision, entryTarget, takeProfitTarget, stopLossTarget, livePrice);
     if (!canvas || !ctx) return;
@@ -613,7 +602,7 @@ export function renderDashboardSignals(
             { price: stopLossTarget, color: 'red' }
         ];
         const startX = Math.floor(canvas.width * 0.04);
-        const endX = Math.floor(canvas.width * 0.82);
+        const endX = Math.floor(canvas.width * 0.85);
         ctx.save();
         try {
             ctx.setLineDash([5, 5]);
@@ -621,7 +610,7 @@ export function renderDashboardSignals(
             for (let index = 0; index < bands.length; index++) {
                 const band = bands[index];
                 if (!Number.isFinite(band.price)) continue;
-                const y = convertPriceToY(canvas, band.price, priceAxisScale);
+                const y = convertPriceToY(canvas, band.price);
                 if (!Number.isFinite(y)) continue;
 
                 ctx.beginPath();
@@ -656,14 +645,12 @@ export function generateTradeSetup(marketData, canvas, ctx) {
         const candles = marketData && marketData.candles;
         const highSwings = marketData && marketData.highSwings;
         const lowSwings = marketData && marketData.lowSwings;
-        const priceAxisScale = marketData && marketData.priceAxisScale;
         result = evaluateTradeSignal(
             candles,
             highSwings,
             lowSwings,
             canvas,
-            marketData && marketData.timeframe,
-            priceAxisScale
+            marketData && marketData.timeframe
         );
     } catch (error) {
         console.error('Trade setup generation failed:', error);
@@ -683,8 +670,7 @@ export function generateTradeSetup(marketData, canvas, ctx) {
         result.stopLossTarget,
         canvas,
         ctx,
-        result.livePrice,
-        marketData && marketData.priceAxisScale
+        result.livePrice
     );
     return {
         decision: result.decision,
