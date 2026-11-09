@@ -1,6 +1,4 @@
 const MIN_CANDLE_RUN = 3;
-const HIGH_PRICE_BOUNDARY = 4076.00;
-const LOW_PRICE_BOUNDARY = 4056.00;
 const TESSERACT_MODULE_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.esm.min.js';
 
 function classifyCandleColor(red, green, blue) {
@@ -151,21 +149,17 @@ export async function extractChartTimeframe(canvas) {
 }
 
 export async function extractChartPriceScale(canvas) {
-    const fallback = {
-        topPrice: HIGH_PRICE_BOUNDARY,
-        bottomPrice: LOW_PRICE_BOUNDARY,
-        topY: canvas.height * 0.12,
-        bottomY: canvas.height * 0.85
-    };
     if (typeof document === 'undefined' || !Number.isFinite(canvas?.width)
-        || !Number.isFinite(canvas?.height)) return fallback;
+        || !Number.isFinite(canvas?.height) || canvas.width <= 0 || canvas.height <= 0) {
+        throw new Error('Cannot extract chart price scale without a valid browser canvas.');
+    }
 
     let worker;
     try {
-        const sourceX = Math.floor(canvas.width * 0.80);
-        const sourceY = Math.floor(canvas.height * 0.08);
+        const sourceX = Math.floor(canvas.width * 0.82);
+        const sourceY = 0;
         const sourceWidth = Math.max(1, canvas.width - sourceX);
-        const sourceHeight = Math.max(1, Math.floor(canvas.height * 0.84));
+        const sourceHeight = canvas.height;
         const scale = 4;
         const crop = document.createElement('canvas');
         crop.width = sourceWidth * scale;
@@ -178,60 +172,83 @@ export async function extractChartPriceScale(canvas) {
         const tesseract = await loadTesseract();
         worker = await tesseract.createWorker('eng');
         const result = await worker.recognize(crop);
-        let topY = null;
-        let bottomY = null;
-        const words = result.data?.words ?? [];
-        for (let index = 0; index < words.length; index++) {
-            const word = words[index];
-            const numericText = String(word.text ?? '').replace(/,/g, '');
-            const priceMatch = numericText.match(/(?:^|[^0-9])(4076(?:\.0{1,2})?|4056(?:\.0{1,2})?)(?:$|[^0-9])/);
-            if (!priceMatch || !word.bbox) continue;
-
-            const price = Number.parseFloat(priceMatch[1]);
-            const wordY = sourceY + ((word.bbox.y0 + word.bbox.y1) / (2 * scale));
-            if (price === HIGH_PRICE_BOUNDARY) topY = wordY;
-            if (price === LOW_PRICE_BOUNDARY) bottomY = wordY;
+        const data = result.data ?? {};
+        const words = [...(data.words ?? [])];
+        if (words.length === 0) {
+            for (const block of data.blocks ?? []) {
+                for (const paragraph of block.paragraphs ?? []) {
+                    for (const line of paragraph.lines ?? []) words.push(...(line.words ?? []));
+                }
+            }
         }
 
-        if (Number.isFinite(topY) && Number.isFinite(bottomY) && topY < bottomY) {
-            return {
-                topPrice: HIGH_PRICE_BOUNDARY,
-                bottomPrice: LOW_PRICE_BOUNDARY,
-                topY,
-                bottomY
-            };
+        const labels = [];
+        for (const word of words) {
+            const bbox = word.bbox;
+            if (!bbox || ![bbox.x0, bbox.x1, bbox.y0, bbox.y1].every(Number.isFinite)) continue;
+            const text = String(word.text ?? '').replace(/,/g, '');
+            const priceMatches = text.matchAll(/(?:^|[^0-9.])(\d+(?:\.\d+)?)(?=$|[^0-9.])/g);
+            for (const match of priceMatches) {
+                const price = Number(match[1]);
+                if (!Number.isFinite(price)) continue;
+                labels.push({
+                    price,
+                    y: sourceY + ((bbox.y0 + bbox.y1) / (2 * scale))
+                });
+            }
         }
+
+        labels.sort((first, second) => first.y - second.y);
+        const topLabel = labels[0];
+        const bottomLabel = labels[labels.length - 1];
+        if (!topLabel || !bottomLabel || topLabel.y >= bottomLabel.y
+            || topLabel.price <= bottomLabel.price) {
+            throw new Error('OCR did not find valid descending price labels on the right-side chart axis.');
+        }
+
+        return {
+            maxPrice: topLabel.price,
+            minPrice: bottomLabel.price,
+            topY: topLabel.y,
+            bottomY: bottomLabel.y
+        };
     } catch (error) {
-        console.warn('Price-axis OCR unavailable for this image:', error);
+        console.error('Unable to extract chart price scale from the uploaded image:', error);
+        throw new Error('Unable to read the chart price axis. Upload a clearer chart image with visible price labels.', {
+            cause: error
+        });
     } finally {
         if (worker) await worker.terminate();
     }
-
-    return fallback;
 }
 
-function getPriceAxisScale(canvas) {
-    const scale = canvas?.priceAxisScale;
-    const topPrice = Number.isFinite(scale?.topPrice) ? scale.topPrice : HIGH_PRICE_BOUNDARY;
-    const bottomPrice = Number.isFinite(scale?.bottomPrice) ? scale.bottomPrice : LOW_PRICE_BOUNDARY;
-    const topY = Number.isFinite(scale?.topY) ? scale.topY : Math.floor(canvas.height * 0.12);
-    const bottomY = Number.isFinite(scale?.bottomY) ? scale.bottomY : Math.floor(canvas.height * 0.85);
-    return { topPrice, bottomPrice, topY, bottomY };
+function getPriceAxisScale(canvas, priceAxisScale = canvas?.priceAxisScale) {
+    if (!priceAxisScale) return null;
+    const { maxPrice, minPrice, topY, bottomY } = priceAxisScale;
+    if (![maxPrice, minPrice, topY, bottomY].every(Number.isFinite)
+        || maxPrice <= minPrice || bottomY <= topY) return null;
+    return { maxPrice, minPrice, topY, bottomY };
 }
 
-export function convertYToPrice(canvas, targetY) {
+export function convertYToPrice(canvas, targetY, priceAxisScale = canvas?.priceAxisScale) {
     if (!canvas || !Number.isFinite(canvas.height) || !Number.isFinite(targetY)) return NaN;
-    const { topPrice, bottomPrice, topY, bottomY } = getPriceAxisScale(canvas);
-    const pricePerPixel = (topPrice - bottomPrice) / (bottomY - topY);
-    const convertedPrice = topPrice - ((targetY - topY) * pricePerPixel);
+    const scale = getPriceAxisScale(canvas, priceAxisScale);
+    if (!scale) return NaN;
+    const { maxPrice, minPrice, topY, bottomY } = scale;
+    const totalPixelHeight = bottomY - topY;
+    const totalPriceRange = maxPrice - minPrice;
+    const convertedPrice = maxPrice - (((targetY - topY) / totalPixelHeight) * totalPriceRange);
     return Number.isFinite(convertedPrice) ? Number.parseFloat(convertedPrice.toFixed(2)) : NaN;
 }
 
-export function convertPriceToY(canvas, targetPrice) {
+export function convertPriceToY(canvas, targetPrice, priceAxisScale = canvas?.priceAxisScale) {
     if (!canvas || !Number.isFinite(canvas.height) || !Number.isFinite(targetPrice)) return NaN;
-    const { topPrice, bottomPrice, topY, bottomY } = getPriceAxisScale(canvas);
-    const pricePerPixel = (topPrice - bottomPrice) / (bottomY - topY);
-    return topY + ((topPrice - targetPrice) / pricePerPixel);
+    const scale = getPriceAxisScale(canvas, priceAxisScale);
+    if (!scale) return NaN;
+    const { maxPrice, minPrice, topY, bottomY } = scale;
+    const totalPixelHeight = bottomY - topY;
+    const totalPriceRange = maxPrice - minPrice;
+    return topY + (((maxPrice - targetPrice) / totalPriceRange) * totalPixelHeight);
 }
 
 export function calculateMarketStructure(candles, canvas, ctx) {

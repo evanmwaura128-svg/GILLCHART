@@ -143,7 +143,9 @@ function findUnmitigatedFairValueGap(candles, currentIndex, direction) {
         if (!firstCandle || !impulseCandle || !thirdCandle
             || !Number.isFinite(firstCandle.highPrice) || !Number.isFinite(firstCandle.lowPrice)
             || !Number.isFinite(impulseCandle.openPrice) || !Number.isFinite(impulseCandle.closePrice)
-            || !Number.isFinite(thirdCandle.highPrice) || !Number.isFinite(thirdCandle.lowPrice)) continue;
+            || !Number.isFinite(thirdCandle.highPrice) || !Number.isFinite(thirdCandle.lowPrice)
+            || ![firstCandle.highY, firstCandle.lowY, impulseCandle.lowY, impulseCandle.highY,
+                thirdCandle.highY, thirdCandle.lowY].every(Number.isFinite)) continue;
 
         let priorBodyTotal = 0;
         let priorBodyCount = 0;
@@ -199,7 +201,12 @@ function findUnmitigatedFairValueGap(candles, currentIndex, direction) {
             thirdIndex,
             gapLowerPrice,
             gapUpperPrice,
-            entryPrice: (gapLowerPrice + gapUpperPrice) / 2,
+            entryY: direction === 'bullish'
+                ? (firstCandle.highY + thirdCandle.lowY) / 2
+                : (thirdCandle.highY + firstCandle.lowY) / 2,
+            stopWickY: direction === 'bullish'
+                ? Math.max(firstCandle.lowY, impulseCandle.lowY, thirdCandle.lowY)
+                : Math.min(firstCandle.highY, impulseCandle.highY, thirdCandle.highY),
             liveTouchesGap: candleOverlapsPriceZone(candles[currentIndex], gapLowerPrice, gapUpperPrice)
         };
     }
@@ -207,7 +214,14 @@ function findUnmitigatedFairValueGap(candles, currentIndex, direction) {
     return null;
 }
 
-export function evaluateTradeSignal(candles, highSwings, lowSwings, canvas, timeframe = '') {
+export function evaluateTradeSignal(
+    candles,
+    highSwings,
+    lowSwings,
+    canvas,
+    timeframe = '',
+    priceAxisScale = canvas?.priceAxisScale
+) {
     let dailyTrendBias = 'BULLISH';
     let proximityContext = null;
     let decision = WAITING_FOR_DATA;
@@ -283,7 +297,9 @@ export function evaluateTradeSignal(candles, highSwings, lowSwings, canvas, time
 
         const liveClose = Number.isFinite(liveCandle.closePrice)
             ? liveCandle.closePrice
-            : Number.isFinite(liveCandle.highY) ? convertYToPrice(canvas, liveCandle.highY) : NaN;
+            : Number.isFinite(liveCandle.highY)
+                ? convertYToPrice(canvas, liveCandle.highY, priceAxisScale)
+                : NaN;
         livePrice = liveClose;
         const PROXIMITY_ZONE = 3.00;
         let latestPeak = highSwings[highSwings.length - 1];
@@ -294,10 +310,14 @@ export function evaluateTradeSignal(candles, highSwings, lowSwings, canvas, time
         const valleyGoldPrice = Number.parseFloat(latestValley.goldPrice);
         const peakPrice = Number.isFinite(peakGoldPrice)
             ? peakGoldPrice
-            : Number.isFinite(latestPeak.highY) ? convertYToPrice(canvas, latestPeak.highY) : NaN;
+            : Number.isFinite(latestPeak.highY)
+                ? convertYToPrice(canvas, latestPeak.highY, priceAxisScale)
+                : NaN;
         const valleyPrice = Number.isFinite(valleyGoldPrice)
             ? valleyGoldPrice
-            : Number.isFinite(latestValley.lowY) ? convertYToPrice(canvas, latestValley.lowY) : NaN;
+            : Number.isFinite(latestValley.lowY)
+                ? convertYToPrice(canvas, latestValley.lowY, priceAxisScale)
+                : NaN;
         const rangeHeight = parseFloat(peakPrice) - parseFloat(valleyPrice);
         if (!Number.isFinite(livePrice) || !Number.isFinite(peakPrice)
             || !Number.isFinite(valleyPrice) || !Number.isFinite(rangeHeight) || rangeHeight <= 0) {
@@ -366,27 +386,25 @@ export function evaluateTradeSignal(candles, highSwings, lowSwings, canvas, time
                         ? liveShape.isBearish && liveShape.isHammer
                         : liveShape.isBullish && liveShape.isInvertedHammer));
             decision = refillConfirmed ? 'FVG: REFILL CONFIRMED - READY' : 'FVG: WAIT FOR REFILL';
-            const fvgCandles = candles.slice(activeFvg.thirdIndex - 2, activeFvg.thirdIndex + 1);
-            const fvgLows = fvgCandles
-                .map((candle) => candle && candle.lowPrice)
-                .filter(Number.isFinite);
-            const fvgHighs = fvgCandles
-                .map((candle) => candle && candle.highPrice)
-                .filter(Number.isFinite);
             const fvgStopBuffer = Math.min(riskBufferGap, Math.max(1, rangeHeight * 0.1));
 
-            entryTarget = activeFvg.entryPrice;
+            entryTarget = convertYToPrice(canvas, activeFvg.entryY, priceAxisScale);
+            const wickPrice = convertYToPrice(canvas, activeFvg.stopWickY, priceAxisScale);
             if (activeFvg.direction === 'bullish') {
-                const wickLow = fvgLows.length ? Math.min(...fvgLows) : activeFvg.gapLowerPrice;
-                stopLossTarget = Math.min(wickLow, activeFvg.gapLowerPrice) - fvgStopBuffer;
-                takeProfitTarget = peakPrice > entryTarget
-                    ? peakPrice
+                stopLossTarget = Math.min(wickPrice, activeFvg.gapLowerPrice) - fvgStopBuffer;
+                const ceilingPrice = Number.isFinite(latestPeak.highY)
+                    ? convertYToPrice(canvas, latestPeak.highY, priceAxisScale)
+                    : peakPrice;
+                takeProfitTarget = ceilingPrice > entryTarget
+                    ? ceilingPrice
                     : entryTarget + ((entryTarget - stopLossTarget) * 1.5);
             } else {
-                const wickHigh = fvgHighs.length ? Math.max(...fvgHighs) : activeFvg.gapUpperPrice;
-                stopLossTarget = Math.max(wickHigh, activeFvg.gapUpperPrice) + fvgStopBuffer;
-                takeProfitTarget = valleyPrice < entryTarget
-                    ? valleyPrice
+                stopLossTarget = Math.max(wickPrice, activeFvg.gapUpperPrice) + fvgStopBuffer;
+                const floorPrice = Number.isFinite(latestValley.lowY)
+                    ? convertYToPrice(canvas, latestValley.lowY, priceAxisScale)
+                    : valleyPrice;
+                takeProfitTarget = floorPrice < entryTarget
+                    ? floorPrice
                     : entryTarget - ((stopLossTarget - entryTarget) * 1.5);
             }
         } else if (bullishOrderBlock && candleOverlapsPriceZone(liveCandle,
@@ -582,7 +600,8 @@ export function renderDashboardSignals(
     stopLossTarget,
     canvas,
     ctx,
-    livePrice = null
+    livePrice = null,
+    priceAxisScale = canvas?.priceAxisScale
 ) {
     updateSidebar(decision, entryTarget, takeProfitTarget, stopLossTarget, livePrice);
     if (!canvas || !ctx) return;
@@ -594,7 +613,7 @@ export function renderDashboardSignals(
             { price: stopLossTarget, color: 'red' }
         ];
         const startX = Math.floor(canvas.width * 0.04);
-        const endX = canvas.width;
+        const endX = Math.floor(canvas.width * 0.82);
         ctx.save();
         try {
             ctx.setLineDash([5, 5]);
@@ -602,7 +621,7 @@ export function renderDashboardSignals(
             for (let index = 0; index < bands.length; index++) {
                 const band = bands[index];
                 if (!Number.isFinite(band.price)) continue;
-                const y = convertPriceToY(canvas, band.price);
+                const y = convertPriceToY(canvas, band.price, priceAxisScale);
                 if (!Number.isFinite(y)) continue;
 
                 ctx.beginPath();
@@ -637,7 +656,15 @@ export function generateTradeSetup(marketData, canvas, ctx) {
         const candles = marketData && marketData.candles;
         const highSwings = marketData && marketData.highSwings;
         const lowSwings = marketData && marketData.lowSwings;
-        result = evaluateTradeSignal(candles, highSwings, lowSwings, canvas, marketData && marketData.timeframe);
+        const priceAxisScale = marketData && marketData.priceAxisScale;
+        result = evaluateTradeSignal(
+            candles,
+            highSwings,
+            lowSwings,
+            canvas,
+            marketData && marketData.timeframe,
+            priceAxisScale
+        );
     } catch (error) {
         console.error('Trade setup generation failed:', error);
         result = {
@@ -656,7 +683,8 @@ export function generateTradeSetup(marketData, canvas, ctx) {
         result.stopLossTarget,
         canvas,
         ctx,
-        result.livePrice
+        result.livePrice,
+        marketData && marketData.priceAxisScale
     );
     return {
         decision: result.decision,

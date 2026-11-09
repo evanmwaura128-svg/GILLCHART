@@ -52,13 +52,17 @@ function loadChartImage(file) {
     chartFilename.textContent = file.name;
     imageDimensions.textContent = `${image.naturalWidth} × ${image.naturalHeight} PX`;
     clearButton.disabled = false;
+    renderDashboardSignals('ANALYZING CHART', null, null, null, chartCanvas, chartContext);
     scanCanvasForCandles(chartCanvas, chartContext)
       .then((marketData) => {
         const setup = generateTradeSetup(marketData, chartCanvas, chartContext);
         recordBacktestResult(setup);
         return setup;
       })
-      .catch((error) => console.error('Chart analysis failed:', error));
+      .catch((error) => {
+        console.error('Chart analysis failed:', error);
+        renderDashboardSignals('PRICE SCALE UNAVAILABLE', null, null, null, chartCanvas, chartContext);
+      });
     URL.revokeObjectURL(objectUrl);
   };
 
