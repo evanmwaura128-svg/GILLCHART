@@ -14,6 +14,13 @@ function candleOverlapsPriceZone(candle, lowerPrice, upperPrice) {
         && candle.highPrice >= lowerPrice;
 }
 
+function findRightmostSwing(swings) {
+    return swings.reduce((rightmost, point) => {
+        if (!point || !Number.isFinite(point.x)) return rightmost;
+        return !rightmost || point.x > rightmost.x ? point : rightmost;
+    }, null);
+}
+
 function updateElement(selector, id, text) {
     if (typeof document === 'undefined') return;
     let element = null;
@@ -292,8 +299,8 @@ export function evaluateTradeSignal(
                 : NaN;
         livePrice = liveClose;
         const PROXIMITY_ZONE = 3.00;
-        let latestPeak = highSwings[highSwings.length - 1];
-        let latestValley = lowSwings[lowSwings.length - 1];
+        const latestPeak = findRightmostSwing(highSwings);
+        const latestValley = findRightmostSwing(lowSwings);
         if (!latestPeak || !latestValley) return finalize();
 
         const peakGoldPrice = Number.parseFloat(latestPeak.goldPrice);
