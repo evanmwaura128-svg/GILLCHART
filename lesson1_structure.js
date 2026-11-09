@@ -248,7 +248,8 @@ export function convertPriceToY(canvas, targetPrice, priceAxisScale = canvas?.pr
     const { maxPrice, minPrice, topY, bottomY } = scale;
     const totalPixelHeight = bottomY - topY;
     const totalPriceRange = maxPrice - minPrice;
-    return topY + (((maxPrice - targetPrice) / totalPriceRange) * totalPixelHeight);
+    const gridOffset = (maxPrice - targetPrice) * 0.082;
+    return topY + (((maxPrice - targetPrice) / totalPriceRange) * totalPixelHeight) + gridOffset;
 }
 
 export function calculateMarketStructure(candles, canvas, ctx) {
