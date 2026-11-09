@@ -1,12 +1,49 @@
 const MIN_CANDLE_RUN = 3;
-const HIGH_PRICE_BOUNDARY = 4140.00;
-const LOW_PRICE_BOUNDARY = 3840.00;
+const HIGH_PRICE_BOUNDARY = 4076.00;
+const LOW_PRICE_BOUNDARY = 4056.00;
 const TESSERACT_MODULE_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.esm.min.js';
 
 function classifyCandleColor(red, green, blue) {
     if (red > 140 && green < 100 && blue < 100) return 'bearish';
     if (red < 130 && green > 110 && blue > 110) return 'bullish';
     return null;
+}
+
+export function measureCandleShape(candle) {
+    if (!candle || !Number.isFinite(candle.openPrice) || !Number.isFinite(candle.closePrice)
+        || !Number.isFinite(candle.highPrice) || !Number.isFinite(candle.lowPrice)) return null;
+
+    const bodyLength = Math.abs(candle.closePrice - candle.openPrice);
+    const totalLength = candle.highPrice - candle.lowPrice;
+    if (totalLength <= 0) return null;
+
+    const precisionTolerance = Number.EPSILON * Math.max(
+        1,
+        Math.abs(candle.openPrice),
+        Math.abs(candle.closePrice),
+        Math.abs(candle.highPrice),
+        Math.abs(candle.lowPrice)
+    ) * 4;
+    const upperWick = candle.highPrice - Math.max(candle.openPrice, candle.closePrice);
+    const lowerWick = Math.min(candle.openPrice, candle.closePrice) - candle.lowPrice;
+    const isDoji = bodyLength <= (totalLength * 0.05) + precisionTolerance;
+    const isPinBar = !isDoji
+        && bodyLength <= (totalLength * 0.3) + precisionTolerance
+        && Math.max(upperWick, lowerWick) >= (totalLength * 0.5);
+
+    return {
+        bodyLength,
+        totalLength,
+        upperWick,
+        lowerWick,
+        isDoji,
+        isPinBar,
+        isHammer: isPinBar && lowerWick > upperWick,
+        isInvertedHammer: isPinBar && upperWick > lowerWick,
+        isMarubozu: bodyLength >= (totalLength * 0.85) - precisionTolerance,
+        isBullish: candle.closePrice > candle.openPrice,
+        isBearish: candle.closePrice < candle.openPrice
+    };
 }
 
 function findVerticalSegment(yCoordinates) {
@@ -113,25 +150,88 @@ export async function extractChartTimeframe(canvas) {
     }
 }
 
+export async function extractChartPriceScale(canvas) {
+    const fallback = {
+        topPrice: HIGH_PRICE_BOUNDARY,
+        bottomPrice: LOW_PRICE_BOUNDARY,
+        topY: canvas.height * 0.12,
+        bottomY: canvas.height * 0.85
+    };
+    if (typeof document === 'undefined' || !Number.isFinite(canvas?.width)
+        || !Number.isFinite(canvas?.height)) return fallback;
+
+    let worker;
+    try {
+        const sourceX = Math.floor(canvas.width * 0.80);
+        const sourceY = Math.floor(canvas.height * 0.08);
+        const sourceWidth = Math.max(1, canvas.width - sourceX);
+        const sourceHeight = Math.max(1, Math.floor(canvas.height * 0.84));
+        const scale = 4;
+        const crop = document.createElement('canvas');
+        crop.width = sourceWidth * scale;
+        crop.height = sourceHeight * scale;
+        const cropContext = crop.getContext('2d');
+        cropContext.imageSmoothingEnabled = false;
+        cropContext.drawImage(canvas, sourceX, sourceY, sourceWidth, sourceHeight,
+            0, 0, crop.width, crop.height);
+
+        const tesseract = await loadTesseract();
+        worker = await tesseract.createWorker('eng');
+        const result = await worker.recognize(crop);
+        let topY = null;
+        let bottomY = null;
+        const words = result.data?.words ?? [];
+        for (let index = 0; index < words.length; index++) {
+            const word = words[index];
+            const numericText = String(word.text ?? '').replace(/,/g, '');
+            const priceMatch = numericText.match(/(?:^|[^0-9])(4076(?:\.0{1,2})?|4056(?:\.0{1,2})?)(?:$|[^0-9])/);
+            if (!priceMatch || !word.bbox) continue;
+
+            const price = Number.parseFloat(priceMatch[1]);
+            const wordY = sourceY + ((word.bbox.y0 + word.bbox.y1) / (2 * scale));
+            if (price === HIGH_PRICE_BOUNDARY) topY = wordY;
+            if (price === LOW_PRICE_BOUNDARY) bottomY = wordY;
+        }
+
+        if (Number.isFinite(topY) && Number.isFinite(bottomY) && topY < bottomY) {
+            return {
+                topPrice: HIGH_PRICE_BOUNDARY,
+                bottomPrice: LOW_PRICE_BOUNDARY,
+                topY,
+                bottomY
+            };
+        }
+    } catch (error) {
+        console.warn('Price-axis OCR unavailable for this image:', error);
+    } finally {
+        if (worker) await worker.terminate();
+    }
+
+    return fallback;
+}
+
+function getPriceAxisScale(canvas) {
+    const scale = canvas?.priceAxisScale;
+    const topPrice = Number.isFinite(scale?.topPrice) ? scale.topPrice : HIGH_PRICE_BOUNDARY;
+    const bottomPrice = Number.isFinite(scale?.bottomPrice) ? scale.bottomPrice : LOW_PRICE_BOUNDARY;
+    const topY = Number.isFinite(scale?.topY) ? scale.topY : canvas.height * 0.12;
+    const bottomY = Number.isFinite(scale?.bottomY) ? scale.bottomY : canvas.height * 0.85;
+    return { topPrice, bottomPrice, topY, bottomY };
+}
+
 export function convertYToPrice(canvas, targetY) {
     if (!canvas || !Number.isFinite(canvas.height) || !Number.isFinite(targetY)) return NaN;
-    const maxPrice = HIGH_PRICE_BOUNDARY;
-    const minPrice = LOW_PRICE_BOUNDARY;
-    const topY = canvas.height * 0.12;
-    const bottomY = canvas.height * 0.85;
-    const pricePerPixel = (maxPrice - minPrice) / (bottomY - topY);
-    const convertedPrice = maxPrice - ((targetY - topY) * pricePerPixel);
+    const { topPrice, bottomPrice, topY, bottomY } = getPriceAxisScale(canvas);
+    const pricePerPixel = (topPrice - bottomPrice) / (bottomY - topY);
+    const convertedPrice = topPrice - ((targetY - topY) * pricePerPixel);
     return Number.isFinite(convertedPrice) ? Number.parseFloat(convertedPrice.toFixed(2)) : NaN;
 }
 
 export function convertPriceToY(canvas, targetPrice) {
     if (!canvas || !Number.isFinite(canvas.height) || !Number.isFinite(targetPrice)) return NaN;
-    const maxPrice = HIGH_PRICE_BOUNDARY;
-    const minPrice = LOW_PRICE_BOUNDARY;
-    const topY = canvas.height * 0.12;
-    const bottomY = canvas.height * 0.85;
-    const pricePerPixel = (maxPrice - minPrice) / (bottomY - topY);
-    return topY + ((maxPrice - targetPrice) / pricePerPixel);
+    const { topPrice, bottomPrice, topY, bottomY } = getPriceAxisScale(canvas);
+    const pricePerPixel = (topPrice - bottomPrice) / (bottomY - topY);
+    return topY + ((topPrice - targetPrice) / pricePerPixel);
 }
 
 export function calculateMarketStructure(candles, canvas, ctx) {
@@ -286,6 +386,8 @@ export async function scanCanvasForCandles(canvas, ctx) {
         }
     }
 
+    canvas.priceAxisScale = await extractChartPriceScale(canvas);
+
     for (let index = 0; index < candles.length; index++) {
         const candle = candles[index];
         const rowCoverage = new Map();
@@ -310,6 +412,7 @@ export async function scanCanvasForCandles(canvas, ctx) {
         candle.bodyLowPrice = convertYToPrice(canvas, candle.bodyLowY);
         candle.openPrice = candle.color === 'bullish' ? candle.bodyLowPrice : candle.bodyHighPrice;
         candle.closePrice = candle.color === 'bullish' ? candle.bodyHighPrice : candle.bodyLowPrice;
+        candle.shape = measureCandleShape(candle);
         delete candle.columns;
     }
 
@@ -324,6 +427,7 @@ export async function scanCanvasForCandles(canvas, ctx) {
         lowSwings: structure.lowSwings,
         swingPoints: structure.swingPoints,
         timeframe,
+        priceAxisScale: canvas.priceAxisScale,
         liveCandle: liveCandle ?? null,
         livePrice: Number.isFinite(livePrice) ? livePrice : null
     };

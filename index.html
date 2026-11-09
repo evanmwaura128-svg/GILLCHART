@@ -66,6 +66,7 @@
       </section>
 
       <aside class="signal-panel" aria-labelledby="signal-title">
+        <div class="backtest-stats" aria-live="polite"><b>Backtest Performance:</b> Total Trades: 0 | Wins: 0 | Losses: 0 | Win Rate: 0.00%</div>
         <div class="panel-heading">
           <div>
             <p class="eyebrow">TRADE PLAN</p>
@@ -81,9 +82,9 @@
           </div>
           <p class="decision-result" id="decision-result">WAITING FOR BREAKOUT</p>
           <div class="decision-options" aria-label="Decision placeholder">
-            <div class="decision-option buy" id="decision-buy" aria-pressed="false"><span class="decision-indicator"></span>BUY NOW</div>
-            <div class="decision-option sell" id="decision-sell" aria-pressed="false"><span class="decision-indicator"></span>SELL NOW</div>
-            <div class="decision-option wait is-active" id="decision-wait" aria-pressed="true"><span class="decision-indicator"></span>WAIT</div>
+            <div class="decision-option buy" id="decision-buy" aria-pressed="false"><input class="decision-indicator" id="buy-now-radio" type="radio" name="trade-decision" disabled aria-hidden="true">BUY NOW</div>
+            <div class="decision-option sell" id="decision-sell" aria-pressed="false"><input class="decision-indicator" id="sell-now-radio" type="radio" name="trade-decision" disabled aria-hidden="true">SELL NOW</div>
+            <div class="decision-option wait is-active" id="decision-wait" aria-pressed="true"><input class="decision-indicator" id="wait-radio" type="radio" name="trade-decision" checked disabled aria-hidden="true">WAIT</div>
           </div>
         </div>
 
