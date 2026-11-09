@@ -49,10 +49,11 @@ function updateSidebar(decision, entry, tp, sl, livePrice) {
         if (waitRadio) waitRadio.checked = false;
 
         let activeId = 'decision-wait';
-        if (decision === 'BUY NOW') {
+        const decisionText = typeof decision === 'string' ? decision : '';
+        if (decisionText.includes('BUY NOW')) {
             activeId = 'decision-buy';
             if (buyRadio) buyRadio.checked = true;
-        } else if (decision === 'SELL NOW') {
+        } else if (decisionText.includes('SELL NOW')) {
             activeId = 'decision-sell';
             if (sellRadio) sellRadio.checked = true;
         } else if (waitRadio) {
@@ -282,7 +283,7 @@ export function evaluateTradeSignal(candles, highSwings, lowSwings, canvas, time
 
         const liveClose = Number.isFinite(liveCandle.closePrice)
             ? liveCandle.closePrice
-            : Number.isFinite(liveCandle.highY) ? convertYToPrice(liveCandle.highY) : NaN;
+            : Number.isFinite(liveCandle.highY) ? convertYToPrice(canvas, liveCandle.highY) : NaN;
         livePrice = liveClose;
         const PROXIMITY_ZONE = 3.00;
         let latestPeak = highSwings[highSwings.length - 1];
@@ -293,10 +294,10 @@ export function evaluateTradeSignal(candles, highSwings, lowSwings, canvas, time
         const valleyGoldPrice = Number.parseFloat(latestValley.goldPrice);
         const peakPrice = Number.isFinite(peakGoldPrice)
             ? peakGoldPrice
-            : Number.isFinite(latestPeak.highY) ? convertYToPrice(latestPeak.highY) : NaN;
+            : Number.isFinite(latestPeak.highY) ? convertYToPrice(canvas, latestPeak.highY) : NaN;
         const valleyPrice = Number.isFinite(valleyGoldPrice)
             ? valleyGoldPrice
-            : Number.isFinite(latestValley.lowY) ? convertYToPrice(latestValley.lowY) : NaN;
+            : Number.isFinite(latestValley.lowY) ? convertYToPrice(canvas, latestValley.lowY) : NaN;
         const rangeHeight = parseFloat(peakPrice) - parseFloat(valleyPrice);
         if (!Number.isFinite(livePrice) || !Number.isFinite(peakPrice)
             || !Number.isFinite(valleyPrice) || !Number.isFinite(rangeHeight) || rangeHeight <= 0) {
@@ -364,16 +365,30 @@ export function evaluateTradeSignal(candles, highSwings, lowSwings, canvas, time
                     && (liveShape.isDoji || (activeFvg.direction === 'bullish'
                         ? liveShape.isBearish && liveShape.isHammer
                         : liveShape.isBullish && liveShape.isInvertedHammer));
-                decision = refillConfirmed ? 'FVG: REFILL CONFIRMED - READY' : 'FVG: WAIT FOR REFILL';
-                if (activeFvg.direction === 'bullish') {
-                    entryTarget = activeFvg.gapUpperPrice;
-                    stopLossTarget = activeFvg.gapLowerPrice - riskBufferGap;
-                    takeProfitTarget = entryTarget + ((entryTarget - stopLossTarget) * 2.0);
-                } else {
-                    entryTarget = activeFvg.gapLowerPrice;
-                    stopLossTarget = activeFvg.gapUpperPrice + riskBufferGap;
-                    takeProfitTarget = entryTarget - ((stopLossTarget - entryTarget) * 2.0);
-                }
+            decision = refillConfirmed ? 'FVG: REFILL CONFIRMED - READY' : 'FVG: WAIT FOR REFILL';
+            const fvgCandles = candles.slice(activeFvg.thirdIndex - 2, activeFvg.thirdIndex + 1);
+            const fvgLows = fvgCandles
+                .map((candle) => candle && candle.lowPrice)
+                .filter(Number.isFinite);
+            const fvgHighs = fvgCandles
+                .map((candle) => candle && candle.highPrice)
+                .filter(Number.isFinite);
+            const fvgStopBuffer = Math.min(riskBufferGap, Math.max(1, rangeHeight * 0.1));
+
+            entryTarget = activeFvg.entryPrice;
+            if (activeFvg.direction === 'bullish') {
+                const wickLow = fvgLows.length ? Math.min(...fvgLows) : activeFvg.gapLowerPrice;
+                stopLossTarget = Math.min(wickLow, activeFvg.gapLowerPrice) - fvgStopBuffer;
+                takeProfitTarget = peakPrice > entryTarget
+                    ? peakPrice
+                    : entryTarget + ((entryTarget - stopLossTarget) * 1.5);
+            } else {
+                const wickHigh = fvgHighs.length ? Math.max(...fvgHighs) : activeFvg.gapUpperPrice;
+                stopLossTarget = Math.max(wickHigh, activeFvg.gapUpperPrice) + fvgStopBuffer;
+                takeProfitTarget = valleyPrice < entryTarget
+                    ? valleyPrice
+                    : entryTarget - ((stopLossTarget - entryTarget) * 1.5);
+            }
         } else if (bullishOrderBlock && candleOverlapsPriceZone(liveCandle,
             bullishOrderBlock.bodyFloor, bullishOrderBlock.bodyCeiling)) {
             if (liveShape && liveShape.isMarubozu && liveShape.isBullish) {
@@ -574,12 +589,12 @@ export function renderDashboardSignals(
 
     try {
         const bands = [
-            { price: entryTarget, color: '#00a2ff' },
-            { price: takeProfitTarget, color: '#2ecc71' },
-            { price: stopLossTarget, color: '#e74c3c' }
+            { price: entryTarget, color: 'blue' },
+            { price: takeProfitTarget, color: 'green' },
+            { price: stopLossTarget, color: 'red' }
         ];
         const startX = Math.floor(canvas.width * 0.04);
-        const endX = Math.floor(canvas.width * 0.85);
+        const endX = canvas.width;
         ctx.save();
         try {
             ctx.setLineDash([5, 5]);

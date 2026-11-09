@@ -214,8 +214,8 @@ function getPriceAxisScale(canvas) {
     const scale = canvas?.priceAxisScale;
     const topPrice = Number.isFinite(scale?.topPrice) ? scale.topPrice : HIGH_PRICE_BOUNDARY;
     const bottomPrice = Number.isFinite(scale?.bottomPrice) ? scale.bottomPrice : LOW_PRICE_BOUNDARY;
-    const topY = Number.isFinite(scale?.topY) ? scale.topY : canvas.height * 0.12;
-    const bottomY = Number.isFinite(scale?.bottomY) ? scale.bottomY : canvas.height * 0.85;
+    const topY = Number.isFinite(scale?.topY) ? scale.topY : Math.floor(canvas.height * 0.12);
+    const bottomY = Number.isFinite(scale?.bottomY) ? scale.bottomY : Math.floor(canvas.height * 0.85);
     return { topPrice, bottomPrice, topY, bottomY };
 }
 
